@@ -4,6 +4,14 @@ This repository stands on other people's published work. The list below is not a
 formality — the working ports here would not exist without the recipe and toolchain
 credited first, and naming them precisely is how a serious shop works.
 
+## Acknowledgments
+
+With thanks to the **[internet.dev](https://internet.dev)** collective and community for
+their support and camaraderie. Good work is easier, and better, in good company.
+
+Special thanks to **Jimmy Lee** ([@wwwjim](https://x.com/wwwjim)) — internet.dev's
+janitor-in-chief — for the encouragement and for keeping the lights on for builders.
+
 ## William McLean — `xbill9`
 
 **The gemma4-on-Inferentia2 wrapper recipe is his.**
@@ -53,14 +61,6 @@ The toolchain that makes any of this run on Inferentia2 / Trainium:
 An `islpy` dependency-drift compiler failure encountered during this work was root-caused
 and filed upstream as **[aws-neuron/aws-neuron-sdk#1391](https://github.com/aws-neuron/aws-neuron-sdk/issues/1391)**.
 See `docs/islpy-neuronxcc-2.27-bug.md` for the root-cause analysis and the one-line fix.
-
-## Acknowledgments
-
-With thanks to the **[internet.dev](https://internet.dev)** collective and community for
-their support and camaraderie. Good work is easier, and better, in good company.
-
-Special thanks to **Jimmy Lee** ([@wwwjim](https://x.com/wwwjim)) — internet.dev's
-janitor-in-chief — for the encouragement and for keeping the lights on for builders.
 
 ## Summary of what is whose
 
