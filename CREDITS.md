@@ -59,6 +59,9 @@ See `docs/islpy-neuronxcc-2.27-bug.md` for the root-cause analysis and the one-l
 With thanks to the **[internet.dev](https://internet.dev)** collective and community for
 their support and camaraderie. Good work is easier, and better, in good company.
 
+Special thanks to **Jimmy Lee** ([@wwwjim](https://x.com/wwwjim)) — internet.dev's
+janitor-in-chief — for the encouragement and for keeping the lights on for builders.
+
 ## Summary of what is whose
 
 | Component                            | Owner / License                                     |
