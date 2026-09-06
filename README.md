@@ -18,6 +18,8 @@ A boutique applied-AI research house. Our engagements are the kind where the del
 
 gemma4 is a 2026 frontier family (256K native context; E-class 128K). Inferentia2 is NeuronCore-v2, a static-graph, ahead-of-time-compiled accelerator with a narrow supported-model surface. The through-line of this work is running the former on the latter — correctly, at length, and at defensible cost. Correctness is gated against Hugging Face `transformers` fp32 references; every long-context claim carries a named needle position. **SEQ_MATCH** means device greedy decode was token-for-token identical to that fp32 reference — the strongest gate we run.
 
+**The complete gemma4 2026 family now runs coherent on Inferentia2 — dense and MoE, from E2B to 31B.** All five members are up on NeuronCore-v2 and verified against fp32: E2B (128K), E4B (128K), 12B dense (SEQ_MATCH bit-exact), 26B-A4B MoE (72K, coherent), and 31B dense (coherent, logit-verified). To our knowledge this is the first published demonstration of the full family — including the dense 31B — serving on Inferentia2.
+
 | Model | Status | Long context | Correctness gate | Throughput (measured) | Layout |
 |---|---|---|---|---|---|
 | **gemma4-E2B** | ✅ MEASURED + live | 128K end-to-end on **one** inf2 chip; needle retrieved at **130,622 tokens** | argmax == HF fp32 across all probe positions | prefill ~1,300 tok/s; decode 42 ms/tok; **multi-bucket TKG → 12 ms/tok (3.5×)**; graph compiles in 409 s | TP2, 15.76 / 16 GB per core |
@@ -25,7 +27,7 @@ gemma4 is a 2026 frontier family (256K native context; E-class 128K). Inferentia
 | **gemma4-12B (dense)** | ✅ MEASURED | — | **SEQ_MATCH bit-exact** greedy vs HF fp32 across the full sequence | 15.29 tok/s (bf16); 11.2 tok/s (int8 weight-only) | TP2, ~16.1 GB per core bf16 |
 | **gemma4-12B, INT8 weight-only** | ✅ MEASURED | — | math prompts token-identical to fp32 | ~9.0 GB/core (≈44% cut from bf16); co-resident with E2B in one 32 GB device | TP2 |
 | **gemma4-26B-A4B (MoE)** | ✅ MEASURED | **72K**; needle at **71,981** (ladder 32K/49K/72K → 32,480 / 48,986 / 71,981) | coherent on held-out prompts (Paris / arithmetic / Rayleigh) | 25 tok/s decode; chunked prefill ~300–440 tok/s | TP-sharded dense-expert, 8.57 GB/core |
-| **gemma4-31B (dense)** | 🔴 GPU-only | — | — | measured dead-end on this silicon; served on GPU today | see finding |
+| **gemma4-31B (dense)** | ✅ MEASURED | — | argmax == HF fp32 **57/58 (98.28%)** across 42 prefill + 16 decode positions; cosine mean 0.9998 / min 0.989; max\|Δ\| 5.24 — coherent, logit-verified (1 near-tie argmax flip; not strictly bit-exact) | decode 15.63 tok/s; first token 120 ms | TP8, HBM ~14.6 / 16 GB per core |
 
 ### Serving economics — stated plainly
 
@@ -44,9 +46,16 @@ For the 26B MoE, the binding constraint at long context is **fixed expert weight
 - **PLAN:** inf2.48xlarge (24 cores, TP16) → the RoPE ceiling at 256K. Quota case open with AWS.
 - **Fact, not aspiration:** 2M context is not reachable on this positional scheme without RoPE re-scaling and fine-tuning. We do not imply otherwise.
 
-### The dense-31B finding (a negative result worth publishing)
+### The dense-31B finding — overturned, and now MEASURED on inf2
 
-The claim that the E2B port applies directly to dense 31B, "same architecture," is **false**, and we measured why: E2B is the *efficient* variant (per-layer embeddings, KV-share, double-wide MLP); gemma4-31B is dense, with checkpoint keys the E2B remap does not expect and a `k_proj` shape mismatch on the full-attention layers. It is a real port, not a wrapper — and its home is the GPU lane. We publish this so nobody re-spends on it as a "quick win."
+We previously published dense 31B as a GPU-only dead-end. That was a finding about a **hand-port**, not about the silicon, and the HF-eager wrapper moots it. `google/gemma-4-31B-it` — 60 layers, 62.5 GB bf16, no PLE — now runs **coherent on Inferentia2** through the same wrap-HF-eager recipe as the rest of the family:
+
+- Compiled **TP=8** on **inf2.24xlarge**; HBM **~14.6 GB/core** (fits the 16 GB budget).
+- Decode **15.63 tok/s**, first token **120 ms**.
+- Coherent generation: *"The capital of France is **Paris**."*; 7×8 = 56.
+- **Logit gate vs canonical HF fp32:** argmax **57/58 (98.28%)** across 42 prefill + 16 decode positions; cosine mean **0.9998** / min **0.989**; max\|Δ\| **5.24**. Verdict: **coherent, not bit-exact** — a single near-tie argmax flip, so we do not claim strict bit-exactness.
+
+The old wall (missing per-layer-embed keys, `k_proj` shape mismatch) was the hand-port fighting the architecture inside NxDI. Wrapping Google's own eager forward never asks NxDI to model the architecture, so those mismatches never arise. The dense 31B is not a GPU-only model on this silicon — we measured it running on inf2. **Wrap, don't port** — again.
 
 ---
 
@@ -73,7 +82,7 @@ Compiles failed with `NCC_ISMP902` for any model past 4,096 tokens, while short 
 
 The reproducible engineering lives beside the results. The governing principle throughout: **wrap the reference model's eager attention and swap only the KV path**, rather than hand-rolling attention that the AOT compiler will trace subtly wrong. Hand-porting gemma4 attention produced coherent-looking but subtly-wrong outputs (a layer-21 SRAM hazard among them); wrapping does not. **Wrap, don't port.**
 
-- **The HF-eager wrapper recipe** — a repeatable procedure for bringing any gemma4 variant (E2B / E4B / 12B / 26B-A4B) up coherently on inf2: TP-shard the linears including `lm_head`, one-hot scatter KV into static device-resident buffers with `input_output_aliases`, hand-load the layer-scalar buffers, softcap and embeddings off-device.
+- **The HF-eager wrapper recipe** — a repeatable procedure for bringing any gemma4 variant (E2B / E4B / 12B / 26B-A4B / 31B) up coherently on inf2: TP-shard the linears including `lm_head`, one-hot scatter KV into static device-resident buffers with `input_output_aliases`, hand-load the layer-scalar buffers, softcap and embeddings off-device.
 - **Long-context add-ons** — sliding-window chunked-prefill on block-structured KV: sliding-window layers cap their KV as a ring at the window, only global layers carry the full cache, absolute `position_ids` keep rotary unchanged. This is the segmented-prefill capability AWS ships natively only on Trn2/Trn3, reproduced on NeuronCore-v2. Window width is proven to the row — a deliberately mis-sized control build lands on the wrong token, so the test can catch a one-row error.
 - **Per-model adaptations** — 12B `k_eq_v` global layers; 26B `DenseExperts` + `SPMD` scatter routing.
 - **Correctness discipline** — the **SEQ_MATCH-at-many-positions** law: verify decode against an HF fp32 reference at many positions, not one (a one-position pass on 12B was a false positive), and carry a needle position on every long-context claim.

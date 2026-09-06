@@ -1,9 +1,16 @@
-# Getting dense Gemma-4-12B and 26B-A4B (MoE) coherent on Inferentia2 — the wrapper-port method
+# Getting dense Gemma-4-12B, 26B-A4B (MoE) and 31B coherent on Inferentia2 — the wrapper-port method
 
 > **This method is not ours. It is [xbill9 (William McLean)](https://github.com/xbill9)'s published
 > recipe, which we adopted after our own hand-rolled NxD Inference (NxDI) modeling port hit an
 > unfixable compiled-attention numerical bug.** Everything below builds on his work. Credit him
 > first, loudly, and in every derivative. We ship no weights — only scripts and recipes.
+
+> **Family status — COMPLETE on Inferentia2.** All five members of the gemma4 2026 family now run
+> coherent on NeuronCore-v2 through this one wrap-HF-eager method: **E2B** (128K), **E4B** (128K),
+> **12B dense** (SEQ_MATCH bit-exact), **26B-A4B MoE** (72K, coherent), and **31B dense** (coherent,
+> logit-verified — see "Dense 31B" below). The dense 31B was our published GPU-only dead-end; the
+> wrapper overturned it. Dense and MoE, small to 31B, all on inf2 — the first published
+> demonstration of the full family on this silicon.
 
 ---
 
@@ -202,12 +209,34 @@ says so — per the provenance law, never call a number "measured" without a run
 - **Caveat (honest):** verified coherent-and-correct, **NOT** bit-exact `SEQ_MATCH` — we skipped
   `DEVICE_ONLY=1` to save compute. xbill9 reports `SEQ_MATCH True` for this recipe.
 
+### Dense 31B — coherent, logit-verified on inf2 (not bit-exact)
+
+The dense 31B was our published GPU-only dead-end. It was not. The wrapper brings it up on
+Inferentia2 the same way it brings up the rest of the family — `google/gemma-4-31B-it`, 60 layers,
+62.5 GB bf16, no PLE — run through the wrap-HF-eager recipe, no hand-port of the architecture.
+
+- Compiled **TP=8** on **inf2.24xlarge**; HBM **~14.6 GB/core** (fits the 16 GB budget).
+- Decode **15.63 tok/s**, first token **120 ms**.
+- Generates coherent text: *"The capital of France is **Paris**."*; 7×8 = 56.
+- **Logit gate vs canonical HF fp32:** argmax **57/58 (98.28%)** across **42 prefill + 16 decode**
+  positions; cosine mean **0.9998** / min **0.989**; max|Δ| **5.24**.
+- **Verdict: coherent, NOT bit-exact.** One near-tie argmax flip — we report it and do not claim
+  strict `SEQ_MATCH`.
+
+**Why the old wall fell.** The prior finding (missing per-layer-embed keys, `k_proj` shape mismatch)
+was a fact about the hand-port re-implementing the architecture inside NxDI, where the E2B remap did
+not expect the dense checkpoint keys. The wrapper never re-implements the architecture — it traces
+Google's own eager forward — so those mismatches never arise. The dense 31B is not GPU-only on this
+silicon; we measured it on inf2.
+
 ### The wall (why the 26B MoE needs a big box)
 
 Full 51.6 GB bf16 weights **do not fit** inf2.8xlarge (32 GB HBM; TP2 needs ~26 GB/core > 16). They
 fit inf2.24xlarge (192 GB → ~4.3 GB/core) or int8/fp8 (~26 GB, tight on 32 GB). This is
-**solvable** (bigger box / quant), unlike the 31B dense wall (missing per-layer-embed keys +
-`k_proj` shape mismatch — genuinely GPU-only; serve on g6e).
+**solvable** (bigger box / quant). The dense 31B, once thought a hard GPU-only wall
+(missing per-layer-embed keys + `k_proj` shape mismatch), is **also solved by the wrapper** —
+those mismatches were the hand-port fighting the architecture, and wrapping Google's eager
+forward never raises them. See "Dense 31B" below: coherent, logit-verified, running on inf2.
 
 ---
 
