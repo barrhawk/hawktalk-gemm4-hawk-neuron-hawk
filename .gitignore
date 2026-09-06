@@ -1,0 +1,64 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+venv/
+.venv/
+env/
+.env
+env.bak/
+venv.bak/
+aws_neuron_venv*/
+
+# --- Neuron / compile artifacts ---
+*.neff
+*.neff.*
+neuron-compile-cache/
+neuroncc_compile_workdir/
+compiler_workdir/
+*.hlo
+*.pb
+*.mlir
+*.json.lock
+model.pt.done
+log-neuron-cc.txt
+
+# --- Large tensors / checkpoints (NEVER commit weights) ---
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.gguf
+*.ckpt
+*.h5
+*.onnx
+*.msgpack
+weights/
+checkpoints/
+models/
+*.tar.gz
+*.tar
+
+# --- Temp / scratch ---
+/tmp/
+tmp/
+scratch/
+*.tmp
+*.log
+.DS_Store
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
